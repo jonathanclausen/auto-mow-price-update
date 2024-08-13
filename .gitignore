@@ -1,0 +1,6 @@
+.venv/**
+__pycache__/**
+config.json
+Ark1.csv
+update-statistics-first-run.json
+update-statistics
