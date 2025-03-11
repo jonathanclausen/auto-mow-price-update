@@ -24,13 +24,11 @@ CURRENCIES = {
 }
 
 class DistributorPriceUpdate:
-    def __init__(self, csv_filepath, wc_api, config):
+    def __init__(self, csv_filepath, wc_api):
         self.update_stats = {}
 
         self.csv_filepath = csv_filepath
         self.wc_api = wc_api
-        self.config = config
-
 
         self.cols = ['Product Code','EUR Distributor price', 'DKK Distributor price', 'USD Distributor price2', 'GBP Distributor Price']
         self.price_df = read_price_csv.read_price_csv(csv_filepath, self.cols)

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Update Results</title>
+</head>
+<body>
+    <h1>Update Results</h1>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Product ID</th>
+                <th>New Price</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in updated_rows %}
+            <tr>
+                <td>{{ row['Product ID'] }}</td>
+                <td>{{ row['New Price'] }}</td>
+                <td>{{ row['Status'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="{{ url_for('upload_csv') }}">Upload another file</a>
+</body>
+</html>

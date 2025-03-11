@@ -4,11 +4,10 @@ import read_price_csv
 import shared
 
 class DealerPriceUpdate:
-    def __init__(self, csv_filepath, wc_api, config):
+    def __init__(self, csv_filepath, wc_api):
 
         self.csv_filepath = csv_filepath
         self.wc_api = wc_api
-        self.config = config
 
         self.error_outfile = "update_dealer_prices-error.csv"
         self.success_outfile = "update-dealer-prices-success.csv"

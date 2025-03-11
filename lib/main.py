@@ -12,10 +12,10 @@ def main(csv_filepath, update_dealer, update_distributor, config):
     wc_api = shared.get_woo_connection(config['url'], config['api-public'], config['api-secret'])
 
     if (update_dealer):
-        dealer_updater = update_dealer_prices.DealerPriceUpdate(csv_filepath, wc_api, config)
+        dealer_updater = update_dealer_prices.DealerPriceUpdate(csv_filepath, wc_api)
         dealer_updater.update_dealer_prices()
     if (update_distributor):
-        distributor_updater = update_dynamic_prices.DistributorPriceUpdate(csv_filepath, wc_api, config)
+        distributor_updater = update_dynamic_prices.DistributorPriceUpdate(csv_filepath, wc_api)
         distributor_updater.update_distributor_prices()
 
 if __name__ == "__main__":
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     if UPDATE_DEALER_COMMAND in sys.argv:
         update_dealer = True
 
-    with open('config.json', 'r') as file:
+    with open(os.path.join('..','config.json'), 'r') as file:
         config = json.load(file)
 
     main(csv_filepath, update_dealer, update_distributor, config)

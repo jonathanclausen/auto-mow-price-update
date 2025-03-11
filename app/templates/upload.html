@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload CSV</title>
+</head>
+<body>
+
+<h1>Upload CSV to Update Prices</h1>
+
+<form action="{{ url_for('upload_csv') }}" method="POST" enctype="multipart/form-data">
+    <label for="csv_file">Choose CSV File:</label>
+    <input type="file" name="csv_file" required><br><br>
+    
+    <!-- Checkboxes for updating dealer and distributor prices -->
+    <label for="update_dealer_prices">Update Dealer Prices:</label>
+    <input type="checkbox" name="update_dealer_prices"><br><br>
+    
+    <label for="update_distributor_prices">Update Distributor Prices:</label>
+    <input type="checkbox" name="update_distributor_prices"><br><br>
+    
+    <button type="submit">Upload</button>
+</form>
+
+</body>
+</html>
