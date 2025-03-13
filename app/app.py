@@ -19,14 +19,34 @@ app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Used for session management
 
 # Static password for simplicity
-ADMIN_PASSWORD = 'yourpassword'
+ADMIN_PASSWORD = ''
+
+def get_config():
+    # Get the absolute path of the current script
+    current_script_path = os.path.abspath(__file__)
+
+    # Get the parent directory of the script (one level up)
+    parent_directory = os.path.dirname(current_script_path)
+
+    # Get the grandparent directory (one level up from the parent directory)
+    grandparent_directory = os.path.dirname(parent_directory)
+
+    config_filename = 'config.json'
+    file_path = os.path.join(grandparent_directory, config_filename)
+    print(file_path)
+    with open(file_path, 'r') as file:
+        config = json.load(file)
+        return config
+    
 
 # Home page with login
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
+        config = get_config()
+
         password = request.form['password']
-        if password == ADMIN_PASSWORD:
+        if password == config['webapp-secret']:
             session['logged_in'] = True
             return redirect(url_for('upload_csv'))
         else:
@@ -42,12 +62,7 @@ def upload_csv():
         return redirect(url_for('index'))  # Redirect to login if not logged in
 
     if request.method == 'POST':
-        current_directory = os.getcwd()
-        parent_directory = os.path.dirname(current_directory)
-
-        config_filename = 'config.json'
-        file_path = os.path.join(parent_directory, config_filename)
-        print(file_path)
+        config = get_config()
 
         csv_file = request.files['csv_file']
         
@@ -64,11 +79,9 @@ def upload_csv():
                 temp_file_path = temp_file.name
 
             try:
-                with open(file_path, 'r') as file:
-                    config = json.load(file)
-                main.main(temp_file_path, update_dealer_prices, update_distributor_prices, config)
+                dealer_error_df, dealer_success_df, dealer_log, distributor_log = main.main(temp_file_path, update_dealer_prices, update_distributor_prices, config)
 
-                return render_template('result.html')
+                return render_template('result.html', dealer_log=dealer_log, distributor_log=distributor_log)
 
             finally:
                 # Clean up the temporary file after use
@@ -86,4 +99,4 @@ def logout():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

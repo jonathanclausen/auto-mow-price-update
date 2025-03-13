@@ -35,6 +35,8 @@ class DealerPriceUpdate:
         
         products = self.price_df
 
+        log = []
+
         for row in products.iterrows():
             data = row[1]
 
@@ -89,12 +91,16 @@ class DealerPriceUpdate:
 
             json, status_code = self.getProductFromSKU(sku)
             if (status_code != 200):
-                print(f"Could not connect to {endpoint}. status_code: {r.status_code}")
+                msg = f"Could not connect to {endpoint}. status_code: {r.status_code}"
+                log.append(msg)
+                print(msg)
                 self.errorList.append(f"Could not connect to {endpoint}. status_code: {r.status_code}")
                 self.error_count += 1
                 continue
                 
             if (json == []):
+                msg = "Product with SKU " + str(sku) + " not found"
+                log.append(msg)
                 print("Product with SKU " + str(sku) + " not found")
                 self.errorList.append(f"SKU: {sku} not found.")
                 self.error_count += 1
@@ -138,6 +144,7 @@ class DealerPriceUpdate:
                 continue
             
             msg = f"Updated {str(sku)}: EUR: {eur_price}, DKK: {dkk_price}, GBP: {gbp_price}, USD: {usd_price}"
+            log.append(msg)
             print(msg)
             # print("Updated " + str(sku) + " with new price " + str(eur_price))
             self.success_count += 1
@@ -148,6 +155,11 @@ class DealerPriceUpdate:
         success_df = pd.DataFrame(self.successList)
         print("Saving errors to " + self.error_outfile)
         print("Saving updates to " + self.success_outfile)
-        print(f"success: {self.success_count}, errors: {self.error_count}, total: {len(products.index)}")
-        error_df.to_csv(self.error_outfile, index=False, header=['SKU'])
-        success_df.to_csv(self.success_outfile, index=False, header=['SKU'])
+        msg = f"success: {self.success_count}, errors: {self.error_count}, total: {len(products.index)}"
+        print(msg)
+        if not error_df.empty and not error_df.columns.empty:
+            error_df.to_csv(self.error_outfile, index=False, header=['SKU'])
+        if not success_df.empty and not success_df.columns.empty:    
+            success_df.to_csv(self.success_outfile, index=False, header=['SKU'])
+
+        return error_df, success_df, log

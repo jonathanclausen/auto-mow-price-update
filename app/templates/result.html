@@ -6,24 +6,14 @@
 </head>
 <body>
     <h1>Update Results</h1>
-    <table border="1">
-        <thead>
-            <tr>
-                <th>Product ID</th>
-                <th>New Price</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in updated_rows %}
-            <tr>
-                <td>{{ row['Product ID'] }}</td>
-                <td>{{ row['New Price'] }}</td>
-                <td>{{ row['Status'] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <h2>Dealer price log</h2>
+    {% for row in dealer_log %}
+    <p>{{ row }}</p>
+    {% endfor %}
+    <h2>Distributor price log</h2>
+    {% for row in distributor_log %}
+    <p>{{ row }}</p>
+    {% endfor %}
     <a href="{{ url_for('upload_csv') }}">Upload another file</a>
 </body>
 </html>

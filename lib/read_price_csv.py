@@ -11,6 +11,7 @@ def read_price_csv(path, use_cols):
 
     df = pd.read_csv(path, 
                   delimiter=";", 
+                  decimal=",",
                   usecols=use_cols,
                   dtype={'Product Code': str},
                   encoding=result['encoding'])

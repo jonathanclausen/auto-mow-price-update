@@ -99,7 +99,7 @@ class DistributorPriceUpdate:
         p = self.wc_api.get(f"products/{product_id}").json()
         has_variations = len(p['variations']) > 0
         has_changed = False
-
+        log = []
         meta_data = p['meta_data']
 
         pricing_rules = next((x for x in meta_data if x["key"] == '_pricing_rules'), None)
@@ -116,8 +116,10 @@ class DistributorPriceUpdate:
 
             for sku in skus_to_check:
                 if self.sku_with_price_exists(sku, CURRENCIES["eu"]["csv_name"]):
-                    print(f"SKU {sku} has distributor price but no distributor setup")
-            return
+                    msg = f"SKU {sku} has distributor price but no distributor setup"
+                    log.append(msg)
+                    print(msg)
+            return log
 
         values_dict = pricing_rules.get("value")
 
@@ -140,21 +142,27 @@ class DistributorPriceUpdate:
                 if not variations_list:
                     continue
                 if len(variations_list) != 1:
-                    print(f"Set {set_key} in product {product_id} has more than variation for distributor price. Not allowed")
+                    msg = f"Set {set_key} in product {product_id} has more than variation for distributor price. Not allowed"
+                    log.append(msg)
+                    print(msg)
                     continue
                 sku = self.get_sku_of_variation(variations_list[0])
             else:
                 sku = p['sku']
 
             if not sku:
-                print(f"No SKU found for products in set {set_key} for product {product_id}")
+                msg = f"No SKU found for products in set {set_key} for product {product_id}"
+                log.append(msg)
+                print(msg)
 
             rules = set.get('rules')
             
             if not rules:
                 continue
             if len(rules) != 1:
-                print(f"Set {set_key} in product {product_id} has more than one price rule. Cannot decide which to change")
+                msg = f"Set {set_key} in product {product_id} has more than one price rule. Cannot decide which to change"
+                log.append(msg)
+                print(msg)
                 continue
 
             for rule_key, rule in rules.items():
@@ -163,12 +171,16 @@ class DistributorPriceUpdate:
                     #new_price = new_price.replace(',','.')
                     if (new_price):
                         self.update_stat(sku, "eu", rule['amount'], new_price)
-                        print(f"Changing price of {sku} from {rule['amount']} to {str(new_price)}")
+                        msg = f"Changing price of {sku} from {rule['amount']} to {str(new_price)}"
+                        log.append(msg)
+                        print(msg)
                         rule['amount'] = str(new_price)
                         self.update_currencies(set_key, sku, meta_data)
                         has_changed = True
                     else:
-                        print(f"No distributor price found for product with sku {sku}")
+                        msg = f"No distributor price found for product with sku {sku}"
+                        log.append(msg)
+                        print(msg)
 
         if (has_changed):
             
@@ -185,6 +197,7 @@ class DistributorPriceUpdate:
                 ]
             }
             self.wc_api.put(f"products/{product_id}", body)
+        return log
 
     def get_all_product_ids(self):
         product_ids = []
@@ -215,10 +228,14 @@ class DistributorPriceUpdate:
         #all_product_ids = [13321] #13075 #15473
         count = 1
 
+        log = []
+
         for id in all_product_ids:
             print(f"{count} of {len(all_product_ids)}. id: {id}")
-            self.update_product_distributor_price(id)
+            log.extend(self.update_product_distributor_price(id))
             count += 1
 
         with open("update-statistics", "w") as fp:
             json.dump(self.update_stats, fp) 
+
+        return log
