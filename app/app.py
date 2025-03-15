@@ -6,6 +6,7 @@ import sys
 import os
 import tempfile
 import json
+from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'lib')))
 
@@ -18,26 +19,20 @@ import main
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Used for session management
 
-# Static password for simplicity
-ADMIN_PASSWORD = ''
+# Load environment variables from .env file
+load_dotenv()
+
+# Access secrets
+WEBAPP_SECRET = os.getenv("WEBAPP_SECRET")
+WOO_PUBLIC = os.getenv("")
 
 def get_config():
-    # Get the absolute path of the current script
-    current_script_path = os.path.abspath(__file__)
-
-    # Get the parent directory of the script (one level up)
-    parent_directory = os.path.dirname(current_script_path)
-
-    # Get the grandparent directory (one level up from the parent directory)
-    grandparent_directory = os.path.dirname(parent_directory)
-
-    config_filename = 'config.json'
-    file_path = os.path.join(grandparent_directory, config_filename)
-    print(file_path)
-    with open(file_path, 'r') as file:
-        config = json.load(file)
-        return config
-    
+    x = {}
+    x['url'] = os.getenv("URL")
+    x['api-public'] = os.getenv("API_PUBLIC")
+    x['api-secret'] = os.getenv("API_SECRET")
+    x['webapp-secret'] = os.getenv("WEBAPP_SECRET")
+    return x
 
 # Home page with login
 @app.route('/', methods=['GET', 'POST'])
