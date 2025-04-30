@@ -5,7 +5,8 @@ def get_woo_connection(url, public, secret):
     url=url,
     consumer_key=public,
     consumer_secret=secret,
-    version="wc/v3"
+    version="wc/v3",
+    query_string_auth=True
     )
 
     return api
