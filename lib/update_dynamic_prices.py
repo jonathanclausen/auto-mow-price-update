@@ -2,6 +2,8 @@ from woocommerce import API
 import json
 import read_price_csv
 import pandas as pd
+import time
+import random
 
 CURRENCIES = {
     "eu": {
@@ -25,38 +27,40 @@ CURRENCIES = {
 
 class DistributorPriceUpdate:
     def __init__(self, csv_filepath, wc_api):
-        self.update_stats = {}
 
         self.csv_filepath = csv_filepath
         self.wc_api = wc_api
-
+        self.products = self.get_all_products()
         self.cols = ['Product Code','EUR Distributor price', 'DKK Distributor price', 'USD Distributor price2', 'GBP Distributor Price']
         self.price_df = read_price_csv.read_price_csv(csv_filepath, self.cols)
+        self.log_list = []
+    
+    def get_all_products(self):
+        params = {}
+        params["per_page"] = 20
+        page = 1
+        all_results = []
 
-    def update_stat(self, sku, currency, old_price, new_price):
-        if not sku in self.update_stats:
-            self.update_stats[sku] = [
-                {
-                    currency: {
-                        "old_price": old_price,
-                        "new_price": new_price,
-                    }
-                }
-            ]
+        while True:
+            params["page"] = page
+            response = self.wc_api.get("products", params=params)
+
+            if not response.ok:
+                raise Exception(f"Request failed: {response.status_code} - {response.text}")
             
-        else:
-            self.update_stats[sku].append(
-                {
-                    currency: {
-                        "old_price": old_price,
-                        "new_price": new_price,
-                    }
-                }
-            )
+            batch = response.json()
+            if not batch:
+                break
 
-    def get_sku_of_variation(self, variation_id):
-        p = self.wc_api.get(f"products/{variation_id}").json()
-        return p['sku']
+            all_results.extend(batch)
+            page += 1
+
+        return all_results
+
+    def get_variations(self, product_id):
+        product_variations = self.wc_api.get(f"products/{product_id}/variations").json()
+        return product_variations
+        
 
     def get_distributor_price_for_sku(self, sku, currency_csv_name):
         # Filter the DataFrame to find the row with the matching SKU
@@ -67,16 +71,6 @@ class DistributorPriceUpdate:
             return row[currency_csv_name].values[0]
         else:
             return None  # SKU not found
-
-    def sku_with_price_exists(self, sku, currency_csv_name):
-        # Filter the DataFrame to find the row with the matching SKU
-        row = self.price_df[self.price_df['SKU'] == sku]
-        
-        if not row.empty:
-            # Check if the price is not NaN
-            if pd.notna(row[currency_csv_name].values[0]):
-                return True
-        return False
 
     #currency is a constant used to index correct metadata. Set is the meta data set to edit.
     def update_currencies(self, set, sku, metadata):
@@ -93,149 +87,261 @@ class DistributorPriceUpdate:
             first_price_rule['price_method'] = "manual"
             first_price_rule['amount'] = str(price)
             
+    def get_wc_product_by_id(self, id):
+        return next((item for item in self.products if item.get("id") == id), None)
 
+    def get_wc_product_by_sku(self, sku):
+            return next((item for item in self.products if item.get("sku") == sku), None)
+    
+    def update_product_distributor_price(self, product):
+        p = product
 
-    def update_product_distributor_price(self, product_id):
-        p = self.wc_api.get(f"products/{product_id}").json()
         has_variations = len(p['variations']) > 0
-        has_changed = False
-        log = []
-        meta_data = p['meta_data']
 
-        pricing_rules = next((x for x in meta_data if x["key"] == '_pricing_rules'), None)
-
-        # Check if the product should have distributor price setup even though it has not.
-        if not pricing_rules:
-            skus_to_check = []
-            if has_variations:
-                
-                for v_id in p['variations']:
-                    skus_to_check.append(self.get_sku_of_variation(v_id))
-            else:
-                skus_to_check.append(p['sku'])
-
-            for sku in skus_to_check:
-                if self.sku_with_price_exists(sku, CURRENCIES["eu"]["csv_name"]):
-                    msg = f"SKU {sku} has distributor price but no distributor setup"
-                    log.append(msg)
-                    print(msg)
-            return log
-
-        values_dict = pricing_rules.get("value")
-
-        skus_changed = []
-        for set_key, set in values_dict.items():
-            distributor = False
-            conditions_dict = set.get("conditions")
-            for cond_key, condition in conditions_dict.items():
-                roles_list = condition.get("args").get('roles')
-                if roles_list and 'distributor' in roles_list:
-                    distributor = True
-                    break
-
-            if not distributor:
-                continue
-
-            sku = ""
-            if (has_variations):
-                variations_list = set.get('variation_rules').get('args').get('variations')
-                if not variations_list:
-                    continue
-                if len(variations_list) != 1:
-                    msg = f"Set {set_key} in product {product_id} has more than variation for distributor price. Not allowed"
-                    log.append(msg)
-                    print(msg)
-                    continue
-                sku = self.get_sku_of_variation(variations_list[0])
-            else:
-                sku = p['sku']
-
-            if not sku:
-                msg = f"No SKU found for products in set {set_key} for product {product_id}"
-                log.append(msg)
-                print(msg)
-
-            rules = set.get('rules')
-            
-            if not rules:
-                continue
-            if len(rules) != 1:
-                msg = f"Set {set_key} in product {product_id} has more than one price rule. Cannot decide which to change"
-                log.append(msg)
-                print(msg)
-                continue
-
-            for rule_key, rule in rules.items():
-                if rule.get('type') == 'fixed_price':
-                    new_price = self.get_distributor_price_for_sku(sku, CURRENCIES["eu"]['csv_name'])
-                    #new_price = new_price.replace(',','.')
-                    if (new_price):
-                        self.update_stat(sku, "eu", rule['amount'], new_price)
-                        msg = f"Changing price of {sku} from {rule['amount']} to {str(new_price)}"
-                        log.append(msg)
-                        print(msg)
-                        rule['amount'] = str(new_price)
-                        self.update_currencies(set_key, sku, meta_data)
-                        has_changed = True
-                    else:
-                        msg = f"No distributor price found for product with sku {sku}"
-                        log.append(msg)
-                        print(msg)
-
-        if (has_changed):
-            
-            uk_pricing_rules = next((x for x in meta_data if x["key"] == CURRENCIES["uk"]['metadata_name']), None)
-            us_pricing_rules = next((x for x in meta_data if x["key"] == CURRENCIES["us"]['metadata_name']), None)
-            dk_pricing_rules = next((x for x in meta_data if x["key"] == CURRENCIES["dk"]['metadata_name']), None)
-            
-            body = {
-                "meta_data": [
-                    pricing_rules,
-                    uk_pricing_rules,
-                    us_pricing_rules,
-                    dk_pricing_rules
-                ]
-            }
-            self.wc_api.put(f"products/{product_id}", body)
-        return log
-
-    def get_all_product_ids(self):
-        product_ids = []
-        page = 1
-        per_page = 50  # Number of products per page (max 100)
+        eu_pricing_rules = {}
+        uk_pricing_rules = {}
+        us_pricing_rules = {}
+        dk_pricing_rules = {}
         
-        while True:
-            # Fetch products from WooCommerce API
-            response = self.wc_api.get("products", params={"per_page": per_page, "page": page, "status": "publish"})
-            products = response.json()
-            
-            # If no products are returned, exit the loop
-            if not products:
-                break
-            
-            # Extract product IDs
-            for product in products:
-                product_ids.append(product['id'])
-            
-            # Increment page number to get the next page of products
-            page += 1
+        if has_variations:
+            product_variations = self.get_variations(p['id'])
 
-        return product_ids
+            for v in product_variations:
+                v_id = v["id"]
+                
+                sku = v["sku"]
+
+                if not sku:
+                    self.log(f"No sku found for product with id {v_id}")
+                    continue
+
+                new_price = self.get_distributor_price_for_sku(sku, CURRENCIES["eu"]['csv_name'])
+                
+                if not new_price:
+                    self.log(f"No price found for product with id {v_id}, sku {sku}")
+                    continue
+
+                set_key = self.generate_set_key()
+                eu_pricing_rules[set_key] = self.make_eu_rule(new_price, v_id)
+                
+                uk_price = self.get_distributor_price_for_sku(sku, CURRENCIES["uk"]['csv_name'])
+                self.try_set_price(uk_pricing_rules, set_key, uk_price, v_id, sku)
+
+                us_price = self.get_distributor_price_for_sku(sku, CURRENCIES["us"]['csv_name'])
+                self.try_set_price(us_pricing_rules, set_key, us_price, v_id, sku)
+
+                dk_price = self.get_distributor_price_for_sku(sku, CURRENCIES["dk"]['csv_name'])
+                self.try_set_price(dk_pricing_rules, set_key, dk_price, v_id, sku)
+
+            meta_data_update = self.create_meta(eu_pricing_rules, uk_pricing_rules, us_pricing_rules, dk_pricing_rules)
+            if meta_data_update['meta_data']:
+                self.wc_api.put(f"products/{product["id"]}", meta_data_update)
+
+        else:
+            sku = p["sku"]
+            id = p["id"]
+            if not sku:
+                self.log(f"No sku found for product with id {id}")
+                return
+
+            new_price = self.get_distributor_price_for_sku(sku, CURRENCIES["eu"]['csv_name'])
+            
+            if not new_price:
+                self.log(f"No price found for product with id {id}, sku {sku}")
+                return
+
+            set_key = self.generate_set_key()
+            eu_pricing_rules[set_key] = self.make_eu_rule(new_price, None)
+            
+            uk_price = self.get_distributor_price_for_sku(sku, CURRENCIES["uk"]['csv_name'])
+            self.try_set_price(uk_pricing_rules, set_key, uk_price, id, sku)
+            
+            us_price = self.get_distributor_price_for_sku(sku, CURRENCIES["us"]['csv_name'])
+            self.try_set_price(us_pricing_rules, set_key, us_price, id, sku)
+
+            dk_price = self.get_distributor_price_for_sku(sku, CURRENCIES["dk"]['csv_name'])
+            self.try_set_price(dk_pricing_rules, set_key, dk_price, id, sku)
+
+            meta_data_update = self.create_meta(eu_pricing_rules, uk_pricing_rules, us_pricing_rules, dk_pricing_rules)
+            if meta_data_update:
+                self.wc_api.put(f"products/{product["id"]}", meta_data_update)
+
+    def create_meta(self, eu_pricing_rules, uk_pricing_rules, us_pricing_rules, dk_pricing_rules):
+        meta_data = []
+        
+        if eu_pricing_rules:
+            eu_data = {
+                "key": "_pricing_rules",
+                "value": eu_pricing_rules
+            }
+            meta_data.append(eu_data)
+
+        if uk_pricing_rules:
+            uk_data = {
+                "key": "_uk_pricing_rules",
+                "value": uk_pricing_rules
+            }
+            meta_data.append(uk_data)
+
+        if us_pricing_rules:
+            us_data = {
+                "key": "_us_pricing_rules",
+                "value": us_pricing_rules
+            }
+            meta_data.append(us_data)
+
+        if dk_pricing_rules:
+            dk_data = {
+                "key": "_danmark_pricing_rules",
+                "value": dk_pricing_rules
+            }
+            meta_data.append(dk_data)
+        
+        meta_data_update = {
+            "meta_data": meta_data
+        }
+        return meta_data_update
+
+    def try_set_price(self, rules, set_key, price, id, sku):
+        if not price:
+            self.log(f"No price found for product with id {id}, sku {sku}")
+            return
+        else:
+            rules[set_key] = self.make_country_rule_for_set(price)
+
+
+
+    def update_or_add(self, meta_data, key, value):
+        found = False
+        for meta in meta_data:
+            if meta["key"] == key:
+                meta["value"] = value
+                found = True
+                break
+
+        # If not found, append it
+        if not found:
+            meta_data.append({
+                "key": key,
+                "value": value
+            })
+
+
+        
+    def log(self, msg):
+        self.log_list.append(msg)
+        print(msg)
+
+
+    def generate_set_key(self):
+        return "set_" + hex(int(time.time() * 1000000) + random.randint(0, 99999))[2:]
+
+
+    def make_eu_rule_for_single_product(self, amount):
+        update_data = {
+            "conditions_type": "all",
+            "conditions": {
+                "1": {
+                    "type": "apply_to",
+                    "args": {
+                        "applies_to": "roles",
+                        "roles": ["distributor"]
+                    }
+                }
+            },
+            "collector": {"type": "product"},
+            "mode": "continuous",
+            "date_from": "",
+            "date_to": "",
+            "rules": {
+                "1": {
+                    "from": "",
+                    "to": "",
+                    "type": "fixed_price",
+                    "amount": "186.75"
+                }
+            },
+            "blockrules": {
+                "1": {
+                    "from": "",
+                    "adjust": "",
+                    "type": "fixed_adjustment",
+                    "amount": "",
+                    "repeating": "no"
+                }
+            }
+        }
+
+    def make_eu_rule(self, amount, variation_id):
+        pricing_rules = {
+            "conditions_type": "all",
+            "conditions": {
+                "1": {
+                    "type": "apply_to",
+                    "args": {
+                        "applies_to": "roles",
+                        "roles": ["distributor"]
+                    }
+                }
+            },
+            "collector": {
+                "type": "product"
+            },
+            
+            "mode": "continuous",
+            "date_from": "",
+            "date_to": "",
+            "rules": {
+                "1": {
+                    "from": "",
+                    "to": "",
+                    "type": "fixed_price",
+                    "amount": str(amount)
+                }
+            },
+            "blockrules": {
+                "1": {
+                    "from": "",
+                    "adjust": "",
+                    "type": "fixed_adjustment",
+                    "amount": "",
+                    "repeating": "no"
+                }
+            }
+        }
+
+        if variation_id:
+            pricing_rules['variation_rules'] = {
+                "args": {
+                    "type": "variations",
+                    "variations": [variation_id]
+                }
+            }
+
+        return pricing_rules
+    
+    def make_country_rule_for_set(self, price):
+        pricing_dict = {
+            "rules": {
+                "1": {
+                    "price_method": "manual",
+                    "amount": str(price)
+                }
+            },
+            "blockrules": {
+                "1": {
+                    "price_method": "exchange_rate",
+                    "amount": ""
+                }
+            }
+        }
+        return pricing_dict
 
     def update_distributor_prices(self):
-        # Fetch and print all product IDs
-        all_product_ids = self.get_all_product_ids()
-        #all_product_ids = [13321] #13075 #15473
         count = 1
-
-        log = []
-
-        for id in all_product_ids:
-            print(f"{count} of {len(all_product_ids)}. id: {id}")
-            log.extend(self.update_product_distributor_price(id))
+        for product in self.products:
+            print(f"{count} of {len(self.products)}. id: {product["id"]}")
+            self.update_product_distributor_price(product)
             count += 1
 
-        with open("update-statistics", "w") as fp:
-            json.dump(self.update_stats, fp) 
-
-        return log
+        return self.log_list
